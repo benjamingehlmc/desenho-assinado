@@ -1,84 +1,117 @@
-// Cole aqui o seu Client ID (ele é público e pode ficar no repositório).
-const GOOGLE_CLIENT_ID = "COLE_SEU_CLIENT_ID.apps.googleusercontent.com";
-
-let idToken = null;
-let urlAtual = null;
+const CLIENT_ID = "";
 
 const formulario = document.getElementById("formulario");
 const campoNumero = document.getElementById("numero");
-const statusLogin = document.getElementById("status-login");
+const botaoEnviar = document.getElementById("enviar");
+const botaoBaixar = document.getElementById("baixar");
+const area = document.getElementById("desenho");
 const mensagem = document.getElementById("mensagem");
-const resultado = document.getElementById("resultado");
-const imagem = document.getElementById("imagem");
-const baixar = document.getElementById("baixar");
-const botao = formulario.querySelector("button");
+const statusLogin = document.getElementById("status-login");
 
-function mostrarErro(texto) {
+let idToken = null;
+let svgAtual = "";
+
+function aviso(texto, tipo) {
   mensagem.textContent = texto;
-  mensagem.hidden = false;
-  resultado.hidden = true;
+  mensagem.className = tipo || "";
 }
 
-function limparErro() {
-  mensagem.hidden = true;
-  mensagem.textContent = "";
+// Apenas para exibir na tela. A assinatura do desenho vem do servidor.
+function emailDoToken(token) {
+  try {
+    const base64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(base64)).email || "";
+  } catch {
+    return "";
+  }
 }
 
-function aoReceberCredencial(resp) {
-  idToken = resp.credential;
-  statusLogin.textContent = "Login com Google concluído.";
-  limparErro();
+function aoLogar(resposta) {
+  idToken = resposta.credential; // id_token (JWT) emitido pelo Google
+  const email = emailDoToken(idToken);
+  statusLogin.textContent = email ? "Conectado como " + email : "Login realizado com sucesso.";
+  aviso("");
 }
 
-function iniciarGoogle() {
-  if (!window.google || !google.accounts) {
-    setTimeout(iniciarGoogle, 100);
+function iniciarGoogle(tentativa) {
+  if (window.google && google.accounts && google.accounts.id) {
+    google.accounts.id.initialize({ client_id: CLIENT_ID, callback: aoLogar });
+    google.accounts.id.renderButton(document.getElementById("botao-google"), {
+      theme: "filled_black",
+      size: "large",
+      shape: "pill",
+      locale: "pt-BR",
+    });
     return;
   }
-  google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: aoReceberCredencial });
-  google.accounts.id.renderButton(document.getElementById("botao-google"), {
-    theme: "filled_blue", size: "large", text: "signin_with", locale: "pt-BR",
-  });
+  if (tentativa < 50) {
+    setTimeout(() => iniciarGoogle(tentativa + 1), 200);
+  } else {
+    aviso("Não foi possível carregar o login do Google. Recarregue a página.", "erro");
+  }
 }
-iniciarGoogle();
 
 formulario.addEventListener("submit", async (evento) => {
   evento.preventDefault();
-  limparErro();
+  aviso("");
+  area.innerHTML = "";
+  botaoBaixar.hidden = true;
+  svgAtual = "";
 
-  const texto = campoNumero.value.trim();
-  const numero = texto === "" ? undefined : Number(texto);
+  const numero = Number(campoNumero.value);
 
-  botao.disabled = true;
+  const cabecalhos = { "Content-Type": "application/json" };
+  if (idToken) cabecalhos["Authorization"] = "Bearer " + idToken;
+
+  botaoEnviar.disabled = true;
+  botaoEnviar.textContent = "Gerando...";
+
   try {
-    const headers = { "Content-Type": "application/json" };
-    if (idToken) headers["Authorization"] = "Bearer " + idToken;
-
-    const resp = await fetch("/api/desenho", {
+    const resposta = await fetch("/api/desenho", {
       method: "POST",
-      headers,
+      headers: cabecalhos,
       body: JSON.stringify({ numero }),
     });
 
-    if (resp.status === 200) {
-      const svg = await resp.text();
-      if (urlAtual) URL.revokeObjectURL(urlAtual);
-      urlAtual = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
-      imagem.src = urlAtual;
-      baixar.href = urlAtual;
-      resultado.hidden = false;
-    } else if (resp.status === 400) {
-      mostrarErro("Número inválido: informe um inteiro entre 1 e 100.");
-    } else if (resp.status === 401) {
-      idToken = null;
-      statusLogin.textContent = "Você ainda não entrou.";
-      mostrarErro("Não autorizado: entre com a sua conta Google (a sessão pode ter expirado).");
-    } else {
-      mostrarErro("Erro inesperado (" + resp.status + "). Tente novamente.");
+    if (resposta.status === 400) {
+      aviso("Erro 400: digite um inteiro entre 1 e 100.", "erro");
+      return;
     }
-  } catch (e) {
-    mostrarErro("Falha de rede ao chamar o servidor.");
+    if (resposta.status === 401) {
+      idToken = null;
+      statusLogin.textContent = "";
+      aviso("Erro 401: faça login com o Google (ou entre de novo, se o login expirou).", "erro");
+      return;
+    }
+    if (!resposta.ok) {
+      aviso("Erro " + resposta.status + " ao gerar o desenho.", "erro");
+      return;
+    }
+
+    svgAtual = await resposta.text();
+    area.innerHTML = svgAtual;
+    botaoBaixar.hidden = false;
+    aviso("Desenho gerado!", "ok");
+  } catch (erro) {
+    aviso("Falha de rede ao chamar o servidor.", "erro");
   } finally {
-    botao.disabled = false;
+    botaoEnviar.disabled = false;
+    botaoEnviar.textContent = "Desenhar";
   }
 });
+
+botaoBaixar.addEventListener("click", () => {
+  if (!svgAtual) return;
+  const arquivo = new Blob([svgAtual], { type: "image/svg+xml" });
+  const url = URL.createObjectURL(arquivo);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "exemplo.svg";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+});
+
+statusLogin.textContent = "Passo 1: clique no botão acima para entrar.";
+iniciarGoogle(0);
