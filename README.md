@@ -22,6 +22,6 @@ Framework preset: `None`. Build command: vazio. Build output directory: `public`
 
 ## Identificação (preencha após o fork)
 
-Nome: 
-RA: 
-URL: https://
+Nome: Benjamin Gehlm Cardozo
+RA: 2026109172
+URL: https://benjamin-gehlm-desenho-assinado.pages.dev
