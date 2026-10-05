@@ -9,27 +9,42 @@
 </head>
 <body>
   <main>
-    <h1>Desenho Assinado</h1>
-    <p class="sub">Entre com o Google e escolha um número de 1 a 100. O desenho sai assinado com o e-mail da sua conta.</p>
+    <header>
+      <span class="selo">Tabuada modular no círculo</span>
+      <h1>Desenho Assinado</h1>
+      <p>Entre com o Google e escolha um número de 1 a 100. Cada número gera uma figura diferente, assinada com o e-mail da sua conta.</p>
+    </header>
 
-    <section>
-      <div id="botao-google"></div>
-      <p id="status-login" class="status">Você ainda não entrou.</p>
+    <section class="cartao">
+      <div class="passo">
+        <span class="num">1</span>
+        <div class="conteudo">
+          <h2>Entre com o Google</h2>
+          <div id="botao-google"></div>
+          <p id="status-login"></p>
+        </div>
+      </div>
+
+      <form id="formulario" class="passo" novalidate>
+        <span class="num">2</span>
+        <div class="conteudo">
+          <h2>Escolha o número</h2>
+          <label for="numero">Número (1 a 100)</label>
+          <div class="linha">
+            <input id="numero" name="numero" type="number" min="1" max="100" step="1" required placeholder="42">
+            <button id="enviar" type="submit">Desenhar</button>
+          </div>
+        </div>
+      </form>
+
+      <p id="mensagem" role="alert"></p>
+
+      <figure id="desenho" aria-live="polite"></figure>
+
+      <button id="baixar" type="button" hidden>Baixar SVG</button>
     </section>
-
-    <form id="formulario" novalidate>
-      <label for="numero">Número (1 a 100)</label>
-      <input type="number" id="numero" name="numero" inputmode="numeric" placeholder="42">
-      <button type="submit">Gerar desenho</button>
-    </form>
-
-    <p id="mensagem" role="alert" hidden></p>
-
-    <figure id="resultado" hidden>
-      <img id="imagem" alt="Desenho gerado pelo servidor">
-      <a id="baixar" download="exemplo.svg">Baixar SVG</a>
-    </figure>
   </main>
-  <script src="script.js"></script>
+
+  <script src="script.js" defer></script>
 </body>
 </html>
