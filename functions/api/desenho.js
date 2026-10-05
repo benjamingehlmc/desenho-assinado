@@ -1,43 +1,63 @@
-import { gerarDesenho, numeroValido } from "../../lib/desenho.js";
-import { emailDoToken, extrairBearer } from "../../lib/token.js";
+import { gerarDesenho } from "../../lib/desenho.js";
 
-function resposta(status, texto, extra = {}) {
+function resposta(texto, status, extra = {}) {
   return new Response(texto, {
     status,
-    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", ...extra },
+    headers: { "Content-Type": "text/plain; charset=utf-8", ...extra },
   });
 }
 
 export async function onRequest({ request, env }) {
-  // 1) método -> 405
+  // 1) Método -> 405
   if (request.method !== "POST") {
-    return resposta(405, "Método não permitido. Use POST.", { Allow: "POST" });
+    return resposta("Método não permitido", 405, { Allow: "POST" });
   }
 
-  // 2) corpo -> 400
+  // 2) Corpo -> 400
   let corpo;
   try {
     corpo = await request.json();
   } catch {
-    return resposta(400, "Corpo ausente ou JSON inválido.");
+    return resposta("JSON inválido ou ausente", 400);
   }
-  if (corpo === null || typeof corpo !== "object" || !("numero" in corpo)) {
-    return resposta(400, "Campo numero ausente.");
-  }
-  if (!numeroValido(corpo.numero)) {
-    return resposta(400, "numero deve ser um inteiro entre 1 e 100.");
+  const numero = corpo && corpo.numero;
+  if (typeof numero !== "number" || !Number.isInteger(numero) || numero < 1 || numero > 100) {
+    return resposta("numero deve ser um inteiro entre 1 e 100", 400);
   }
 
-  // 3) token -> 401
-  const token = extrairBearer(request.headers.get("Authorization"));
-  const email = await emailDoToken(token, env.GOOGLE_CLIENT_ID);
-  if (!email) {
-    return resposta(401, "Token ausente, inválido, expirado ou com e-mail não verificado.");
+  // 3) Token -> 401
+  const auth = request.headers.get("Authorization") || "";
+  const m = auth.match(/^Bearer\s+(.+)$/i);
+  if (!m || !env.GOOGLE_CLIENT_ID) {
+    return resposta("Token ausente", 401);
   }
 
-  // 200: o e-mail vem do token verificado, nunca do corpo da requisição
-  return new Response(gerarDesenho(corpo.numero, email), {
+  let info;
+  try {
+    const r = await fetch(
+      "https://oauth2.googleapis.com/tokeninfo?id_token=" + encodeURIComponent(m[1])
+    );
+    if (r.status !== 200) return resposta("Token inválido", 401);
+    info = await r.json();
+  } catch {
+    return resposta("Falha ao validar token", 401);
+  }
+
+  if (
+    info.aud !== env.GOOGLE_CLIENT_ID ||
+    String(info.email_verified) !== "true" ||
+    !info.email
+  ) {
+    return resposta("Token não aceito", 401);
+  }
+
+  // 200: o e-mail da assinatura vem do token, nunca do cliente
+  const svg = gerarDesenho(numero, info.email);
+  return new Response(svg, {
     status: 200,
-    headers: { "Content-Type": "image/svg+xml; charset=utf-8", "Cache-Control": "no-store" },
+    headers: {
+      "Content-Type": "image/svg+xml",
+      "Cache-Control": "no-store",
+    },
   });
 }
