@@ -1,46 +1,84 @@
-// script.js
-// Versao inicial: todo o trabalho acontece no navegador.
-// A tarefa consiste em levar gerarDesenho para o servidor (Pages Functions)
-// e fazer esta pagina apenas enviar o numero e exibir a resposta.
+// Cole aqui o seu Client ID (ele é público e pode ficar no repositório).
+const GOOGLE_CLIENT_ID = "COLE_SEU_CLIENT_ID.apps.googleusercontent.com";
 
-import { gerarDesenho, numeroValido } from "./desenho.js";
+let idToken = null;
+let urlAtual = null;
 
 const formulario = document.getElementById("formulario");
 const campoNumero = document.getElementById("numero");
-const campoEmail = document.getElementById("email");
-const area = document.getElementById("desenho");
+const statusLogin = document.getElementById("status-login");
 const mensagem = document.getElementById("mensagem");
-const botaoBaixar = document.getElementById("baixar");
+const resultado = document.getElementById("resultado");
+const imagem = document.getElementById("imagem");
+const baixar = document.getElementById("baixar");
+const botao = formulario.querySelector("button");
 
-let svgAtual = "";
+function mostrarErro(texto) {
+  mensagem.textContent = texto;
+  mensagem.hidden = false;
+  resultado.hidden = true;
+}
 
-formulario.addEventListener("submit", (evento) => {
-  evento.preventDefault();
+function limparErro() {
+  mensagem.hidden = true;
   mensagem.textContent = "";
+}
 
-  const numero = Number(campoNumero.value);
-  const email = campoEmail.value.trim();
+function aoReceberCredencial(resp) {
+  idToken = resp.credential;
+  statusLogin.textContent = "Login com Google concluído.";
+  limparErro();
+}
 
-  if (!numeroValido(numero)) {
-    mensagem.textContent = "Digite um inteiro entre 1 e 100.";
+function iniciarGoogle() {
+  if (!window.google || !google.accounts) {
+    setTimeout(iniciarGoogle, 100);
     return;
   }
-  if (email === "") {
-    mensagem.textContent = "Informe um e-mail.";
-    return;
+  google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: aoReceberCredencial });
+  google.accounts.id.renderButton(document.getElementById("botao-google"), {
+    theme: "filled_blue", size: "large", text: "signin_with", locale: "pt-BR",
+  });
+}
+iniciarGoogle();
+
+formulario.addEventListener("submit", async (evento) => {
+  evento.preventDefault();
+  limparErro();
+
+  const texto = campoNumero.value.trim();
+  const numero = texto === "" ? undefined : Number(texto);
+
+  botao.disabled = true;
+  try {
+    const headers = { "Content-Type": "application/json" };
+    if (idToken) headers["Authorization"] = "Bearer " + idToken;
+
+    const resp = await fetch("/api/desenho", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ numero }),
+    });
+
+    if (resp.status === 200) {
+      const svg = await resp.text();
+      if (urlAtual) URL.revokeObjectURL(urlAtual);
+      urlAtual = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+      imagem.src = urlAtual;
+      baixar.href = urlAtual;
+      resultado.hidden = false;
+    } else if (resp.status === 400) {
+      mostrarErro("Número inválido: informe um inteiro entre 1 e 100.");
+    } else if (resp.status === 401) {
+      idToken = null;
+      statusLogin.textContent = "Você ainda não entrou.";
+      mostrarErro("Não autorizado: entre com a sua conta Google (a sessão pode ter expirado).");
+    } else {
+      mostrarErro("Erro inesperado (" + resp.status + "). Tente novamente.");
+    }
+  } catch (e) {
+    mostrarErro("Falha de rede ao chamar o servidor.");
+  } finally {
+    botao.disabled = false;
   }
-
-  svgAtual = gerarDesenho(numero, email);
-  area.innerHTML = svgAtual;
-  botaoBaixar.hidden = false;
-});
-
-botaoBaixar.addEventListener("click", () => {
-  const arquivo = new Blob([svgAtual], { type: "image/svg+xml" });
-  const url = URL.createObjectURL(arquivo);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "exemplo.svg";
-  link.click();
-  URL.revokeObjectURL(url);
 });
